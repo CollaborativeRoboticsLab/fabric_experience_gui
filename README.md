@@ -26,7 +26,34 @@ The package now uses Qt through `python_qt_binding`, which matches the ROS GUI e
 
 ## Build
 
-From the colcon workspace root:
+The GUI is an independent repository. To use its ROS Jazzy devcontainer, clone it
+and open the repository folder in VS Code using **Reopen in Container**:
+
+```bash
+git clone https://github.com/CollaborativeRoboticsLab/fabric_experience_gui.git
+cd fabric_experience_gui
+```
+
+The devcontainer's post-create command imports the pinned Fabric, capabilities2,
+and prompt-tools repositories from `dependencies.repos`, installs the discovered
+ROS dependencies, and builds the GUI in `~/fabric_gui_ws`. It requires network
+access. It refuses to modify dependency checkouts that are dirty or at another
+revision. Set `FABRIC_GUI_WS` before running the bootstrap manually to use a
+different workspace:
+
+```bash
+bash .devcontainer/setup-workspace.sh
+source /opt/ros/jazzy/setup.bash
+source ~/fabric_gui_ws/install/setup.bash
+ros2 run fabric_experience_gui inspector_gui.py
+```
+
+If `FABRIC_GUI_WS` is set, source that workspace's `install/setup.bash` instead.
+The container uses the host X11 socket and `DISPLAY`; desktop access also depends
+on the host's X11 authorization. The devcontainer setup has not yet been verified
+in a clean container.
+
+For an existing colcon workspace with the dependencies already present:
 
 ```bash
 colcon build --packages-up-to fabric_experience_gui
@@ -187,18 +214,20 @@ not Fabric validation; visual graph editing, capability discovery, and dispatch 
 not available. The Plan Sandbox remains non-dispatching.
 
 Loading or replacing a modified draft asks for confirmation, as does closing the
-standalone window. Save drafts before closing or removing the rqt plugin: whether
-the rqt host can cancel plugin removal after that prompt has not been verified.
+standalone window. When rqt removes the plugin, it cannot cancel removal; the GUI
+requires an explicit save or discard, and asks again after a canceled or failed save.
+This behavior has plugin-level tests but has not been verified in a full rqt host.
 
 ## Separate Containers
 
 The GUI can run in a separate repository and devcontainer when its ROS interfaces,
 `fabric_server` Python helpers, Qt dependencies, and workspace build dependencies are
-available there. This package has not yet been extracted or given a separate devcontainer.
-Host networking can allow ROS 2 discovery between containers, but both sides must also
-use compatible ROS domain IDs, middleware and discovery configuration, network
-interfaces, multicast or configured peers, and firewall rules. Test service calls and
-recovery on the target containers; host networking alone does not guarantee discovery.
+available there. The included devcontainer uses host networking and host IPC; these
+share the host network and IPC namespaces and should be used only in a trusted setup.
+Both sides must also use compatible ROS domain IDs, middleware and discovery
+configuration, network interfaces, multicast or configured peers, and firewall rules.
+Test service calls and recovery on the target containers; host networking alone does
+not guarantee discovery. Cross-container service discovery is not yet verified.
 
 ## Plan Sandbox
 
