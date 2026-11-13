@@ -1,0 +1,13 @@
+repositories:
+  fabric:
+    type: git
+    url: https://github.com/CollaborativeRoboticsLab/fabric.git
+    version: 3abdebd104f7af8a8f8ff97ff34b1c2b197e1e1c
+  capabilities2:
+    type: git
+    url: https://github.com/CollaborativeRoboticsLab/capabilities2.git
+    version: 6ef1309adf60b7b5520c79802accebe43fa3bbff
+  prompt_tools:
+    type: git
+    url: https://github.com/CollaborativeRoboticsLab/prompt_tools.git
+    version: bc573505126d62ce944f67d12d88782c849609bb

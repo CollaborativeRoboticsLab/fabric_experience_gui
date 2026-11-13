@@ -1,0 +1,15 @@
+<library path="src">
+  <class
+      name="fabric_experience_gui/ExperienceInspectorPlugin"
+      type="fabric_experience_gui.plugin.ExperienceInspectorPlugin"
+      base_class_type="rqt_gui_py::Plugin">
+    <description>
+      Offline GraphRAG and prompt-audit inspector for Fabric Experience artifacts.
+    </description>
+    <qtgui>
+      <label>Fabric Experience GUI</label>
+      <icon type="theme">document-open</icon>
+      <statustip>Inspect Fabric Experience GraphRAG databases and prompt-audit artifacts.</statustip>
+    </qtgui>
+  </class>
+</library>
