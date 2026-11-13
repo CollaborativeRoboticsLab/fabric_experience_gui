@@ -64,6 +64,10 @@ def test_navigation_and_experience_controls():
                     if button.text() == 'Use Current Defaults')
     assert 'Replace the analysis paths' in defaults.toolTip()
     assert 'threshold' in widget.jobs_panel.high_prompt_spin.toolTip()
+    review_buttons = {button.text(): button for button in widget.findChildren(QtWidgets.QPushButton)}
+    assert 'selected request' in review_buttons['Open In Request Review'].toolTip()
+    assert 'selected sample' in review_buttons['Open Sample In Request Review'].toolTip()
+    assert 'candidate plan' in review_buttons['Open Sample In Request Review'].toolTip()
     for button in widget.findChildren(QtWidgets.QPushButton):
         assert button.toolTip(), button.text()
     for edit in widget.findChildren(QtWidgets.QLineEdit):
@@ -73,6 +77,37 @@ def test_navigation_and_experience_controls():
     app.processEvents()
     assert not widget.jobs_scroll.isVisible() and not widget.db_path_edit.isVisible()
     widget.close()
+
+
+def test_decision_support_filter_selects_visible_request():
+    app = ensure_application([])
+    widget = InspectorWidget()
+    opened = []
+    panel = widget.decision_support_widget
+    panel.on_open_request = lambda request_id, **kwargs: opened.append((request_id, kwargs['candidate_plan_id']))
+    report = {'request_prompt_decision_support': [
+        {'planning_request_id': 'first', 'selected_candidate_plan_id': 'plan_1'},
+        {'planning_request_id': 'second', 'selected_candidate_plan_id': 'plan_2'},
+    ]}
+    panel.set_report(report)
+    panel.filter_edit.setText('second')
+    panel.open_selected_request()
+    assert opened == [('second', 'plan_2')]
+    assert 'second' in panel.detail_box.toPlainText()
+
+    panel.filter_edit.setText('missing')
+    panel.open_selected_request()
+    assert opened == [('second', 'plan_2')]
+    assert panel.detail_box.toPlainText() == 'No decision-support request selected.'
+
+    panel.filter_edit.setText('second')
+    panel.set_report(report)
+    panel.open_selected_request()
+    assert opened == [('second', 'plan_2'), ('second', 'plan_2')]
+    panel.filter_edit.clear()
+    assert panel.request_table.currentRow() == 1
+    widget.close()
+    app.processEvents()
 
 
 def test_xml_draft_load_save_and_syntax(tmp_path, monkeypatch):
@@ -113,6 +148,33 @@ def test_xml_draft_load_save_and_syntax(tmp_path, monkeypatch):
     app.processEvents()
 
 
+def test_xml_draft_structure_is_read_only_and_invalidated(monkeypatch):
+    app = ensure_application([])
+    widget = InspectorWidget()
+    draft = widget.draft_editor
+    monkeypatch.setattr(widget.fabric_graph_widget.requests, 'request',
+                        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError('unexpected ROS request')))
+    xml = ('<Plan><Control type="sequential"><Runner interface="demo/A" provider="demo/P" value="1"/>'
+           '</Control></Plan>')
+    draft.editor.setPlainText(xml)
+    draft.inspect_structure()
+    root = draft.structure.topLevelItem(0)
+    assert root.text(0) == 'Plan'
+    assert root.child(0).text(0) == 'Control: sequential'
+    runner = root.child(0).child(0)
+    assert runner.text(1) == 'demo/A / demo/P' and runner.childCount() == 0
+    assert draft.editor.toPlainText() == xml
+    assert 'have not been validated' in draft.status.text()
+    draft.editor.setPlainText('<Plan><Unknown/></Plan>')
+    assert draft.structure.topLevelItemCount() == 0
+    draft.inspect_structure()
+    assert draft.structure.topLevelItemCount() == 0
+    assert 'Unsupported structural element' in draft.status.text()
+    draft.editor.document().setModified(False)
+    widget.close()
+    app.processEvents()
+
+
 def test_xml_draft_unsaved_changes_protect_load_and_close(tmp_path, monkeypatch):
     app = ensure_application([])
     window = InspectorMainWindow()
@@ -131,6 +193,44 @@ def test_xml_draft_unsaved_changes_protect_load_and_close(tmp_path, monkeypatch)
     assert window.isVisible()
     monkeypatch.setattr(QtWidgets.QMessageBox, 'question', lambda *args: QtWidgets.QMessageBox.Discard)
     assert window.close()
+    app.processEvents()
+
+
+def test_xml_draft_save_on_replace_and_close(tmp_path, monkeypatch):
+    app = ensure_application([])
+    window = InspectorMainWindow()
+    draft = window.widget.draft_editor
+    draft.editor.insertPlainText('<Plan id="original"/>')
+    source = tmp_path / 'source.xml'
+    source.write_text('<Plan id="loaded"/>', encoding='utf-8')
+    new_save = tmp_path / 'before_new.xml'
+    load_save = tmp_path / 'before_load.xml'
+    close_save = tmp_path / 'before_close.xml'
+    save_paths = iter(['', str(tmp_path / 'missing' / 'draft.xml'), '',
+                       str(new_save), str(load_save), str(close_save)])
+    open_calls = []
+    monkeypatch.setattr(QtWidgets.QMessageBox, 'question', lambda *args: QtWidgets.QMessageBox.Save)
+    monkeypatch.setattr(QtWidgets.QFileDialog, 'getSaveFileName', lambda *args: (next(save_paths), ''))
+    monkeypatch.setattr(QtWidgets.QFileDialog, 'getOpenFileName',
+                        lambda *args: (open_calls.append(True) or str(source), ''))
+
+    draft.new_draft()
+    assert draft.editor.toPlainText() == '<Plan id="original"/>'
+    draft.load_draft()
+    assert not open_calls and draft.editor.document().isModified()
+    assert not window.close()
+    assert draft.editor.toPlainText() == '<Plan id="original"/>'
+
+    draft.new_draft()
+    assert new_save.read_text(encoding='utf-8') == '<Plan id="original"/>'
+    assert not draft.editor.toPlainText()
+    draft.editor.insertPlainText('<Plan id="before_load"/>')
+    draft.load_draft()
+    assert load_save.read_text(encoding='utf-8') == '<Plan id="before_load"/>'
+    assert draft.editor.toPlainText() == '<Plan id="loaded"/>'
+    draft.editor.insertPlainText(' ')
+    assert window.close()
+    assert close_save.read_text(encoding='utf-8') == draft.editor.toPlainText()
     app.processEvents()
 
 
@@ -479,10 +579,12 @@ def test_fabric_graph_widget_real_services_recover_without_mutation(monkeypatch)
     from rclpy.context import Context
     from rclpy.executors import SingleThreadedExecutor
     from rclpy.node import Node
-    from capabilities2_msgs.srv import ConnectCapability, TriggerCapability
+    from capabilities2_msgs.msg import RunnableSpec
+    from capabilities2_msgs.srv import ConnectCapability, GetRunnableSpecs, TriggerCapability
     from fabric_msgs.msg import FabricConnection, FabricNode, FabricStatus
     from fabric_msgs.srv import CancelFabricPlan, GetFabricPlanSnapshot, ParsePlan, SubmitFabricPlan
     from fabric_experience_gui.services.fabric_graph_client import FabricGraphClient
+    from fabric_experience_gui.ui.draft_editor import DraftEditorWidget
 
     monkeypatch.setenv('ROS_DOMAIN_ID', str(100 + os.getpid() % 100))
     monkeypatch.setenv('ROS_LOCALHOST_ONLY', '1')
@@ -495,6 +597,8 @@ def test_fabric_graph_widget_real_services_recover_without_mutation(monkeypatch)
     thread.start()
     app = ensure_application([])
     widget = FabricGraphWidget(client_factory=lambda: FabricGraphClient(timeout_sec=1.0))
+    draft = DraftEditorWidget()
+    draft.requests._client_factory = lambda: FabricGraphClient(timeout_sec=1.0)
     requests = []
     mutations = []
     source = FabricNode(interface='demo/Source', provider='demo/Source', instance_id=1)
@@ -521,6 +625,12 @@ def test_fabric_graph_widget_real_services_recover_without_mutation(monkeypatch)
         mutations.append(True)
         return response
 
+    def runnable_callback(request, response):
+        requests.append('runnable')
+        response.index_of_specs = ['demo/Provider']
+        response.runnable_specs = [RunnableSpec(spec='interface:\n  name: demo/Interface\nprovider:\n  name: demo/Provider\n')]
+        return response
+
     def wait_for(predicate):
         deadline = time.monotonic() + 8
         while not predicate() and time.monotonic() < deadline:
@@ -535,6 +645,7 @@ def test_fabric_graph_widget_real_services_recover_without_mutation(monkeypatch)
         node.create_service(CancelFabricPlan, '/fabric/plan/cancel', mutation_callback)
         node.create_service(ConnectCapability, '/capabilities/connect_capability', mutation_callback)
         node.create_service(TriggerCapability, '/capabilities/trigger_capability', mutation_callback)
+        runnable_service = node.create_service(GetRunnableSpecs, '/capabilities/get_runnable_specs', runnable_callback)
 
         widget.refresh()
         wait_for(lambda: widget.capture is not None and not widget.refreshing)
@@ -561,9 +672,38 @@ def test_fabric_graph_widget_real_services_recover_without_mutation(monkeypatch)
         wait_for(lambda: widget.capture is not None and not widget.refreshing)
         assert widget.capture.source == 'loaded'
         assert requests == ['snapshot', 'snapshot', ('parse', '<Plan />')]
+
+        original = '<Plan><Runner interface="old/I" provider="old/P" value="1"/></Plan>'
+        draft.editor.setPlainText(original)
+        draft.inspect_structure()
+        draft.structure.setCurrentItem(draft.structure.topLevelItem(0).child(0))
+        assert not draft.apply_runnable_button.isEnabled()
+        draft.refresh_runnables()
+        wait_for(lambda: bool(draft.runnable_pairs) and draft.refresh_runnable_button.isEnabled())
+        assert draft.runnable_pairs == (('demo/Interface', 'demo/Provider'),)
+        assert draft.apply_runnable_button.isEnabled()
+        draft.apply_runnable_button.click()
+        assert 'interface="demo/Interface"' in draft.editor.toPlainText()
+        assert 'value="1"' in draft.editor.toPlainText()
+        assert draft.editor.document().isModified()
+        draft.editor.undo()
+        assert draft.editor.toPlainText() == original
+        draft.inspect_structure()
+        draft.structure.setCurrentItem(draft.structure.topLevelItem(0).child(0))
+
+        node.destroy_service(runnable_service)
+        draft.refresh_runnables()
+        assert not draft.apply_runnable_button.isEnabled()
+        wait_for(lambda: 'unavailable' in draft.runnable_status.text() and draft.refresh_runnable_button.isEnabled())
+        assert not draft.runnable_pairs
+        runnable_service = node.create_service(GetRunnableSpecs, '/capabilities/get_runnable_specs', runnable_callback)
+        draft.refresh_runnables()
+        wait_for(lambda: bool(draft.runnable_pairs) and draft.refresh_runnable_button.isEnabled())
+        assert requests == ['snapshot', 'snapshot', ('parse', '<Plan />'), 'runnable', 'runnable']
         assert not mutations
     finally:
         widget.close_requests()
+        draft.close_requests()
         wait_for(lambda: not _active_requests)
         executor.shutdown()
         thread.join(timeout=5)

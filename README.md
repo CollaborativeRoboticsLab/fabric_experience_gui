@@ -209,12 +209,27 @@ submit a plan.
 
 Generative Graph provides a prompt field and read-only plan area, but generation is
 disabled until safe preview is verified. The Graph Editor tab currently offers an
-isolated XML draft with load, atomic save, and a well-formedness check. The check is
-not Fabric validation; visual graph editing, capability discovery, and dispatch are
-not available. The Plan Sandbox remains non-dispatching.
+isolated XML draft with load, atomic save, and a well-formedness check. Inspect Structure
+shows supported `Plan`, `Control`, and `Runner` elements in a tree. Controls must use
+`sequential`, `parallel_any`, `parallel_all`, or `recovery`; each Plan or Control must
+contain an executable element. Runners require interface and provider attributes and
+may carry parameter attributes. Runner child elements or text, unknown structural
+elements, namespaces on structural elements, and document type declarations are not
+supported by the structured view; the XML editor can still load and save them.
 
-Loading or replacing a modified draft asks for confirmation, as does closing the
-standalone window. When rqt removes the plugin, it cannot cancel removal; the GUI
+Refresh Runnables requests `/capabilities/get_runnable_specs`, the available
+capabilities2 service for runnable metadata. Select a runner and a returned pair to
+replace its interface and provider in the draft. Existing parameter attributes are
+preserved but may not be valid for the new provider. The list is a snapshot and must
+be refreshed to reflect changes; failure clears it. An unchanged structured draft
+retains its original XML, while editing may normalize its formatting. This is not
+Fabric validation: parameters, parser behavior, and runtime availability remain
+unchecked. Visual graph editing and dispatch are not available. The Plan Sandbox
+remains non-dispatching.
+
+Loading or replacing a modified draft, or closing the standalone window, offers
+Save, Discard, or Cancel. A canceled or failed save keeps the draft open. When rqt
+removes the plugin, it cannot cancel removal; the GUI
 requires an explicit save or discard, and asks again after a canceled or failed save.
 This behavior has plugin-level tests but has not been verified in a full rqt host.
 

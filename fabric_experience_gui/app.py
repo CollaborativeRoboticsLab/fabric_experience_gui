@@ -316,6 +316,7 @@ class InspectorWidget(QtWidgets.QWidget):
         if not self.draft_editor.confirm_discard():
             event.ignore()
             return
+        self.draft_editor.close_requests()
         self.fabric_graph_widget.close_requests()
         super().closeEvent(event)
 
@@ -1235,6 +1236,7 @@ class InspectorMainWindow(QtWidgets.QMainWindow):
         if not self.widget.draft_editor.confirm_discard():
             event.ignore()
             return
+        self.widget.draft_editor.close_requests()
         self.widget.fabric_graph_widget.close_requests()
         super().closeEvent(event)
 

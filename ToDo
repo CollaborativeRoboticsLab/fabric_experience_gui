@@ -4,41 +4,32 @@ See `planned_work.md` for scope, dependencies, and acceptance criteria.
 
 ## GUI Reorganization And Separation
 
-- [x] Rename the ROS package, Python module, launch and rqt integration to `fabric_experience_gui`; update consumers, tests, and documentation.
-- [x] Separate the GUI repository and define a pinned dependency manifest and devcontainer setup.
 - [ ] Verify the devcontainer bootstrap and clean build in a real container.
 - [ ] Test cross-container ROS discovery and service calls, including compatible domain, middleware, discovery, network, and recovery settings.
-- [x] Move loading controls into Experience and organize the top-level Fabric and Experience tabs.
-- [ ] Add Fabric tabs for generation, live execution, and graph editing; keep unavailable generation/editor/dispatch features clearly identified until safe implementations exist.
-- [x] Show interface names as live graph labels and remaining node information in tooltips.
-- [x] Group Experience tabs into Plan Sandbox, Inspect GraphRAG, Decision Support, and Feedback Ingestion with the requested sub-tabs.
-- [ ] Add descriptive tooltips to inputs and buttons, and keep Analysis Jobs workflows accessible without a global cluttered panel.
+- [ ] Implement safe generation and visual graph editing in the existing Fabric tabs; keep unavailable features clearly identified.
+- [ ] Complete descriptive tooltip coverage and verify Analysis Jobs workflows remain accessible.
 - [ ] Test the reorganized navigation, tooltips, existing inspection workflows, sandbox safety, and standalone/rqt operation.
 
 ## 1. Live Fabric Snapshot
 
-- [ ] Define a read-only active-plan snapshot contract, including plan identity, lifecycle, capability instances, event connections, and availability states.
-- [ ] Expose a consistent runtime snapshot through a Fabric service; handle no active plan, transitions, and failures explicitly.
+- [ ] Verify and complete the read-only snapshot contract for plan identity, lifecycle, capability instances, event connections, and availability states.
+- [ ] Verify snapshot consistency across no active plan, transitions, and failures in the existing Fabric service.
 - [ ] Keep planned connections distinct from confirmed runtime connections and expose unavailable or stale data honestly.
 - [ ] Incorporate running-capability and provider dependency information without assuming missing instance identities.
 - [ ] Test snapshot consistency, lifecycle transitions, service errors, and cleanup.
 
 ## 2. Read-Only Graph
 
-- [ ] Preserve the existing Experience database browsing and proposal workflows.
-- [ ] Add a Fabric graph view for a loaded plan and a live active-plan snapshot.
-- [ ] Support main capabilities, capability instances, and instances with dependencies as distinct levels.
-- [ ] Show directed, labeled event edges and visually distinct dependency relationships; expose node and edge details.
-- [ ] Add refresh, filtering, navigation, and clear empty, disconnected, partial, and stale states.
+- [ ] Regression-test existing Experience database browsing and proposal workflows.
+- [ ] Verify the loaded-plan and live snapshot views, including all three graph levels, event and dependency relationships, and node and edge details.
+- [ ] Verify refresh, filtering, navigation, and empty, disconnected, partial, and stale states.
 - [ ] Test aggregation, repeated instances, event types, dependency identity, and Qt interactions.
 
 ## 3. Graph Editor
 
-- [x] Add an isolated XML draft workspace with load/save, limited syntax checking, and standalone unsaved-change protection; do not enable dispatch.
-- [x] Require saving or explicitly discarding modified drafts during rqt plugin shutdown, with plugin-level tests.
 - [ ] Verify unsaved-draft handling during removal from a full rqt host.
-- [ ] Define an editable draft model and the subset of Fabric XML that can be round-tripped without loss.
-- [ ] Add capability discovery, node and event-edge editing, parameters, and draft load/save.
+- [ ] Verify the restricted draft model against the Fabric parser and establish which XML structures can be round-tripped without loss.
+- [ ] Add node and event-edge editing and parameter editing; retain discovered runnable-pair selection and draft load/save.
 - [ ] Validate drafts locally and against Fabric before enabling submission; show actionable errors.
 - [ ] Test graph-to-plan conversion, invalid drafts, unsupported XML, and round trips.
 

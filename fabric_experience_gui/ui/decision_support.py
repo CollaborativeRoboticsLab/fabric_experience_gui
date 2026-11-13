@@ -57,6 +57,7 @@ class DecisionSupportWidget(QtWidgets.QWidget):
         left_layout.addWidget(self.request_table, stretch=1)
 
         open_button = QtWidgets.QPushButton('Open In Request Review')
+        open_button.setToolTip('Open the selected request in Request Review to inspect its audit and plan details.')
         open_button.clicked.connect(self.open_selected_request)
         left_layout.addWidget(open_button)
 
@@ -113,11 +114,7 @@ class DecisionSupportWidget(QtWidgets.QWidget):
                 self.request_table.setItem(row_index, column_index, item)
         self.request_table.resizeColumnsToContents()
         self.apply_filter()
-        if self.request_table.rowCount() > 0:
-            self.request_table.selectRow(0)
-            self.update_request_details()
-        else:
-            self.detail_box.setPlainText('No decision-support request selected.')
+        self.update_request_details()
 
     def apply_filter(self) -> None:
         needle = self.filter_edit.text().strip().lower()
@@ -137,8 +134,13 @@ class DecisionSupportWidget(QtWidgets.QWidget):
             self.request_table.setRowHidden(row_index, hidden)
             if not hidden and first_visible == -1:
                 first_visible = row_index
-        if first_visible >= 0 and self.request_table.currentRow() < 0:
-            self.request_table.selectRow(first_visible)
+        if not self.request_table.selectedItems():
+            if first_visible >= 0:
+                self.request_table.selectRow(first_visible)
+            else:
+                self.request_table.clearSelection()
+                self.request_table.setCurrentCell(-1, -1)
+                self.update_request_details()
 
     def update_request_details(self) -> None:
         selected_items = self.request_table.selectedItems()

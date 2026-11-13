@@ -71,6 +71,7 @@ class CalibrationReviewWidget(QtWidgets.QWidget):
         sample_layout.addWidget(self.sample_table, stretch=1)
 
         open_button = QtWidgets.QPushButton('Open Sample In Request Review')
+        open_button.setToolTip('Open the selected sample\'s request and candidate plan in Request Review.')
         open_button.clicked.connect(self.open_selected_sample_request)
         sample_layout.addWidget(open_button)
 

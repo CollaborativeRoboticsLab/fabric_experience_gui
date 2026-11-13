@@ -41,6 +41,8 @@ class _GraphRequest(QtCore.QThread):
             client = self.client_factory()
             if self.source == 'live':
                 result = client.snapshot(include_dependencies=self.include_dependencies)
+            elif self.source == 'runnable':
+                result = client.runnable_specs()
             else:
                 result = client.parse(self.plan_xml)
         except Exception as exc:
@@ -70,8 +72,8 @@ class FabricGraphRequests(QtCore.QObject):
         self._closed = False
 
     def request(self, source: str, plan_xml: str = '', *, include_dependencies: bool = False):
-        if source not in ('live', 'loaded'):
-            raise ValueError('source must be live or loaded')
+        if source not in ('live', 'loaded', 'runnable'):
+            raise ValueError('source must be live, loaded, or runnable')
         if self._closed:
             return
         self._revision += 1
