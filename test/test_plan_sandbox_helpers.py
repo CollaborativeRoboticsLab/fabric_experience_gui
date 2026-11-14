@@ -93,6 +93,33 @@ def test_draft_model_preserves_attribute_whitespace():
     assert draft.to_xml().startswith('<?xml version="1.1" standalone="yes"?>')
 
 
+def test_draft_runner_parameters_round_trip_and_reject_invalid_edits():
+    import pytest
+
+    xml = '<Plan><Runner interface="demo/I" provider="demo/P" old="1"/></Plan>'
+    draft = DraftModel(xml)
+    assert not draft.set_runner_parameter((0,), 'old', '1')
+    assert not draft.set_runner_pair((0,), 'demo/I', 'demo/P', {('demo/I', 'demo/P')})
+    assert draft.to_xml() == xml
+    for name in ('interface', 'provider', 'xmlns', 'xml:lang', 'bad name', 'bad="x" other'):
+        with pytest.raises(ValueError):
+            draft.set_runner_parameter((0,), name, 'value')
+        assert draft.to_xml() == xml
+    with pytest.raises(ValueError):
+        draft.set_runner_parameter((0,), 'value', '\x00')
+    with pytest.raises(ValueError):
+        draft.remove_runner_parameter((0,), 'provider')
+    with pytest.raises(ValueError):
+        draft.remove_runner_parameter((0,), 'missing')
+    assert draft.to_xml() == xml
+    draft.set_runner_parameter((0,), 'target', 'first\nsecond & "quoted"')
+    draft.set_runner_parameter((0,), 'old', '2')
+    draft.remove_runner_parameter((0,), 'old')
+    restored = DraftModel(draft.to_xml())
+    assert dict(restored.root.children[0].attributes) == {
+        'interface': 'demo/I', 'provider': 'demo/P', 'target': 'first\nsecond & "quoted"'}
+
+
 def test_parse_optional_json_and_build_plan_graph():
     payload = parse_optional_json(
         '{'

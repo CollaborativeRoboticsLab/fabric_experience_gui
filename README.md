@@ -220,7 +220,10 @@ supported by the structured view; the XML editor can still load and save them.
 Refresh Runnables requests `/capabilities/get_runnable_specs`, the available
 capabilities2 service for runnable metadata. Select a runner and a returned pair to
 replace its interface and provider in the draft. Existing parameter attributes are
-preserved but may not be valid for the new provider. The list is a snapshot and must
+preserved but may not be valid for the new provider. Runner parameter attributes can
+also be added, changed, or removed using the parameter editor; names must be valid
+unnamespaced XML attributes and cannot be `interface` or `provider`. Values are text
+and are not checked against provider metadata. The list is a snapshot and must
 be refreshed to reflect changes; failure clears it. An unchanged structured draft
 retains its original XML, while editing may normalize its formatting. This is not
 Fabric validation: parameters, parser behavior, and runtime availability remain

@@ -66,6 +66,16 @@ class DraftModel:
     def set_runner_pair(self, path, interface, provider, valid_pairs):
         if (interface, provider) not in valid_pairs:
             raise ValueError('Interface and provider are not a verified runnable pair.')
+        element = self._runner_element(path)
+        if element.getAttribute('interface') == interface and element.getAttribute('provider') == provider:
+            return False
+        element.setAttribute('interface', interface)
+        element.setAttribute('provider', provider)
+        self._changed = True
+        self.root = self._read_node(self._document.documentElement, ())
+        return True
+
+    def _runner_element(self, path):
         element = self._document.documentElement
         node = self.root
         for index in path:
@@ -76,8 +86,33 @@ class DraftModel:
             element = children[index]
         if node.kind != 'Runner':
             raise ValueError('Draft node is not a Runner.')
-        element.setAttribute('interface', interface)
-        element.setAttribute('provider', provider)
+        return element
+
+    def set_runner_parameter(self, path, name, value):
+        if (not isinstance(name, str) or not name or ':' in name or
+                name in ('interface', 'provider', 'xmlns') or not isinstance(value, str)):
+            raise ValueError('Parameter requires an unnamespaced XML attribute name other than interface or provider.')
+        try:
+            sample = minidom.parseString(f'<Runner {name}={quoteattr(value)}/>').documentElement
+            if sample.attributes.length != 1 or sample.attributes.item(0).name != name:
+                raise ValueError('Invalid parameter name.')
+        except (ExpatError, UnicodeError, ValueError) as exc:
+            raise ValueError('Invalid XML parameter name or value.') from exc
+        element = self._runner_element(path)
+        if element.hasAttribute(name) and element.getAttribute(name) == value:
+            return False
+        element.setAttribute(name, value)
+        self._changed = True
+        self.root = self._read_node(self._document.documentElement, ())
+        return True
+
+    def remove_runner_parameter(self, path, name):
+        if not isinstance(name, str) or name in ('interface', 'provider', 'xmlns') or ':' in name:
+            raise ValueError('Cannot remove interface, provider, or namespace attributes as parameters.')
+        element = self._runner_element(path)
+        if not element.hasAttribute(name):
+            raise ValueError('Runner parameter does not exist.')
+        element.removeAttribute(name)
         self._changed = True
         self.root = self._read_node(self._document.documentElement, ())
 

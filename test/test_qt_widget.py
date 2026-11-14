@@ -175,6 +175,75 @@ def test_xml_draft_structure_is_read_only_and_invalidated(monkeypatch):
     app.processEvents()
 
 
+def test_xml_draft_parameter_editing_is_local_and_undoable(monkeypatch):
+    app = ensure_application([])
+    widget = InspectorWidget()
+    draft = widget.draft_editor
+    monkeypatch.setattr(widget.fabric_graph_widget.requests, 'request',
+                        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError('unexpected ROS request')))
+    monkeypatch.setattr(draft.requests, 'request',
+                        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError('unexpected ROS request')))
+    original = '<Plan><Runner interface="demo/I" provider="demo/P" speed="1" encoded="one&#13;two"/></Plan>'
+    draft.editor.setPlainText(original)
+    draft.inspect_structure()
+    root = draft.structure.topLevelItem(0)
+    draft.structure.setCurrentItem(root)
+    assert not draft.parameter_name.isEnabled()
+    draft.structure.setCurrentItem(root.child(0))
+    assert draft.parameter_table.rowCount() == 2
+    draft.parameter_table.selectRow(1)
+    draft.set_parameter_button.click()
+    assert draft.editor.toPlainText() == original
+    assert not draft.editor.document().isModified()
+    draft.parameter_table.selectRow(0)
+    assert draft.parameter_name.text() == 'speed'
+    assert draft.parameter_value.toPlainText() == '1'
+    draft.set_parameter_button.click()
+    assert draft.editor.toPlainText() == original
+    assert not draft.editor.document().isModified()
+
+    draft.parameter_name.setText('provider')
+    draft.parameter_value.setPlainText('wrong')
+    draft.set_parameter_button.click()
+    assert 'Cannot edit parameter' in draft.status.text()
+    assert draft.editor.toPlainText() == original
+
+    draft.parameter_name.setText('speed')
+    draft.parameter_value.setPlainText('2')
+    draft.set_parameter_button.click()
+    assert 'speed="2"' in draft.editor.toPlainText()
+    assert draft.editor.document().isModified()
+    assert draft.structure.currentItem().text(0) == 'Runner'
+    assert 'not been validated' in draft.status.text()
+    draft.editor.undo()
+    assert draft.editor.toPlainText() == original
+    assert draft.parameter_table.rowCount() == 0
+
+    draft.inspect_structure()
+    draft.structure.setCurrentItem(draft.structure.topLevelItem(0).child(0))
+    draft.parameter_name.setText('speed')
+    draft.remove_parameter_button.click()
+    assert 'speed=' not in draft.editor.toPlainText()
+    assert draft.parameter_table.rowCount() == 1
+    draft.editor.undo()
+    assert draft.editor.toPlainText() == original
+
+    from xml.etree import ElementTree
+    draft.inspect_structure()
+    draft.structure.setCurrentItem(draft.structure.topLevelItem(0).child(0))
+    draft.parameter_name.setText('message')
+    draft.parameter_value.setPlainText('first\nsecond & third')
+    draft.set_parameter_button.click()
+    runner = ElementTree.fromstring(draft.editor.toPlainText()).find('Runner')
+    assert runner.attrib['message'] == 'first\nsecond & third'
+    assert runner.attrib['encoded'] == 'one\rtwo'
+    draft.editor.undo()
+    assert draft.editor.toPlainText() == original
+    draft.editor.document().setModified(False)
+    widget.close()
+    app.processEvents()
+
+
 def test_xml_draft_unsaved_changes_protect_load_and_close(tmp_path, monkeypatch):
     app = ensure_application([])
     window = InspectorMainWindow()

@@ -28,9 +28,10 @@ See `planned_work.md` for scope, dependencies, and acceptance criteria.
 ## 3. Graph Editor
 
 - [ ] Verify unsaved-draft handling during removal from a full rqt host.
-- [ ] Verify the restricted draft model against the Fabric parser and establish which XML structures can be round-tripped without loss.
-- [ ] Add node and event-edge editing and parameter editing; retain discovered runnable-pair selection and draft load/save.
-- [ ] Validate drafts locally and against Fabric before enabling submission; show actionable errors.
+- [ ] Compare original and edited drafts with the actual Fabric XML parser, covering nested controls, repeated runners, event connections, and parameter attributes; identify unsupported or lossy structures.
+- [ ] Check runnable-spec metadata against Fabric's parameter handling, then validate known parameter names, values, and requirements while reporting unavailable or insufficient metadata honestly.
+- [ ] Add node and event-edge editing; retain parameter editing, discovered runnable-pair selection, and draft load/save.
+- [ ] Establish a non-dispatching validation path for the exact draft; invalidate results after edits and keep submission disabled until validation and review are verified.
 - [ ] Test graph-to-plan conversion, invalid drafts, unsupported XML, and round trips.
 
 ## 4. Explicit Dispatch

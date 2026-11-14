@@ -11,6 +11,7 @@ class DraftEditorWidget(QtWidgets.QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.model = None
+        self._selected_parameter_original = None
         self.runnable_pairs = ()
         self.requests = FabricGraphRequests(self)
         self.requests.capture_ready.connect(self._runnable_ready)
@@ -59,13 +60,48 @@ class DraftEditorWidget(QtWidgets.QWidget):
         self.structure = QtWidgets.QTreeWidget()
         self.structure.setHeaderLabels(['Draft structure', 'Interface / provider'])
         self.structure.setToolTip('Read-only structure from the current XML draft; runner parameters are XML attributes.')
-        self.structure.itemSelectionChanged.connect(self._update_apply_state)
+        self.structure.itemSelectionChanged.connect(self._selection_changed)
+        detail_panel = QtWidgets.QWidget()
+        detail_layout = QtWidgets.QVBoxLayout(detail_panel)
+        detail_layout.setContentsMargins(0, 0, 0, 0)
+        detail_layout.addWidget(self.structure, stretch=2)
+        detail_layout.addWidget(QtWidgets.QLabel('Runner Parameters'))
+        self.parameter_table = QtWidgets.QTableWidget(0, 2)
+        self.parameter_table.setHorizontalHeaderLabels(['Name', 'Value'])
+        self.parameter_table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+        self.parameter_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
+        self.parameter_table.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+        self.parameter_table.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.Stretch)
+        self.parameter_table.setToolTip('Select a runner parameter to edit or remove it from this draft.')
+        self.parameter_table.itemSelectionChanged.connect(self._parameter_selected)
+        detail_layout.addWidget(self.parameter_table, stretch=1)
+        self.parameter_name = QtWidgets.QLineEdit()
+        self.parameter_name.setPlaceholderText('Parameter name')
+        self.parameter_name.setToolTip('XML attribute name; interface and provider are set separately.')
+        self.parameter_name.textChanged.connect(self._update_apply_state)
+        detail_layout.addWidget(self.parameter_name)
+        self.parameter_value = QtWidgets.QPlainTextEdit()
+        self.parameter_value.setPlaceholderText('Parameter value')
+        self.parameter_value.setToolTip('Draft parameter value as text; Fabric validation is not performed.')
+        self.parameter_value.setMaximumHeight(70)
+        detail_layout.addWidget(self.parameter_value)
+        parameter_controls = QtWidgets.QHBoxLayout()
+        self.set_parameter_button = QtWidgets.QPushButton('Set Parameter')
+        self.set_parameter_button.setToolTip('Add or update the selected draft runner parameter.')
+        self.set_parameter_button.clicked.connect(self.set_parameter)
+        parameter_controls.addWidget(self.set_parameter_button)
+        self.remove_parameter_button = QtWidgets.QPushButton('Remove Parameter')
+        self.remove_parameter_button.setToolTip('Remove the named parameter from the selected draft runner.')
+        self.remove_parameter_button.clicked.connect(self.remove_parameter)
+        parameter_controls.addWidget(self.remove_parameter_button)
+        detail_layout.addLayout(parameter_controls)
         splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         splitter.addWidget(self.editor)
-        splitter.addWidget(self.structure)
+        splitter.addWidget(detail_panel)
         splitter.setStretchFactor(0, 3)
         splitter.setStretchFactor(1, 2)
         layout.addWidget(splitter, stretch=1)
+        self._selection_changed()
 
     def _draft_changed(self):
         self.model = None
@@ -211,9 +247,44 @@ class DraftEditorWidget(QtWidgets.QWidget):
         if not hasattr(self, 'apply_runnable_button'):
             return
         selected = self.structure.currentItem() if hasattr(self, 'structure') else None
-        self.apply_runnable_button.setEnabled(bool(
-            self.model is not None and selected is not None and selected.text(0) == 'Runner' and
+        runner_selected = self.model is not None and selected is not None and selected.text(0) == 'Runner'
+        self.apply_runnable_button.setEnabled(bool(runner_selected and
             self.runnable_combo.currentIndex() >= 0 and self.runnable_pairs))
+        if hasattr(self, 'parameter_name'):
+            self.parameter_name.setEnabled(runner_selected)
+            self.parameter_value.setEnabled(runner_selected)
+            self.set_parameter_button.setEnabled(bool(runner_selected and self.parameter_name.text()))
+            self.remove_parameter_button.setEnabled(bool(runner_selected and self.parameter_name.text()))
+
+    def _selection_changed(self):
+        if not hasattr(self, 'parameter_table'):
+            self._update_apply_state()
+            return
+        self._selected_parameter_original = None
+        self.parameter_table.setRowCount(0)
+        self.parameter_name.clear()
+        self.parameter_value.clear()
+        item = self.structure.currentItem()
+        if self.model is not None and item is not None and item.text(0) == 'Runner':
+            node = self.model.root
+            for index in item.data(0, QtCore.Qt.UserRole):
+                node = node.children[index]
+            parameters = [(name, value) for name, value in node.attributes
+                          if name not in ('interface', 'provider', 'xmlns') and ':' not in name]
+            self.parameter_table.setRowCount(len(parameters))
+            for row, (name, value) in enumerate(parameters):
+                self.parameter_table.setItem(row, 0, QtWidgets.QTableWidgetItem(name))
+                self.parameter_table.setItem(row, 1, QtWidgets.QTableWidgetItem(value))
+        self._update_apply_state()
+
+    def _parameter_selected(self):
+        row = self.parameter_table.currentRow()
+        if row >= 0 and self.parameter_table.item(row, 0) is not None:
+            name = self.parameter_table.item(row, 0).text()
+            value = self.parameter_table.item(row, 1).text()
+            self.parameter_name.setText(name)
+            self.parameter_value.setPlainText(value)
+            self._selected_parameter_original = (name, value, self.parameter_value.toPlainText())
 
     def apply_runnable(self):
         item = self.structure.currentItem()
@@ -223,15 +294,58 @@ class DraftEditorWidget(QtWidgets.QWidget):
         if not pair or tuple(pair) not in self.runnable_pairs:
             return
         try:
-            self.model.set_runner_pair(tuple(item.data(0, QtCore.Qt.UserRole)), pair[0], pair[1], self.runnable_pairs)
+            changed = self.model.set_runner_pair(tuple(item.data(0, QtCore.Qt.UserRole)), pair[0], pair[1], self.runnable_pairs)
         except ValueError as exc:
             self.status.setText(f'Cannot edit runner: {exc}')
             return
+        if not changed:
+            self.status.setText('Runner is unchanged. The plan has not been validated.')
+            return
+        self._commit_model(tuple(item.data(0, QtCore.Qt.UserRole)))
+
+    def _commit_model(self, path):
         xml = self.model.to_xml()
         cursor = self.editor.textCursor()
         cursor.select(cursor.Document)
         cursor.insertText(xml)
         self.inspect_structure()
+        item = self.structure.topLevelItem(0)
+        for index in path:
+            item = item.child(index)
+        self.structure.setCurrentItem(item)
+
+    def set_parameter(self):
+        item = self.structure.currentItem()
+        if self.model is None or item is None:
+            return
+        path = tuple(item.data(0, QtCore.Qt.UserRole))
+        name = self.parameter_name.text()
+        value = self.parameter_value.toPlainText()
+        if self._selected_parameter_original is not None:
+            original_name, original_value, displayed_value = self._selected_parameter_original
+            if name == original_name and value == displayed_value:
+                value = original_value
+        try:
+            changed = self.model.set_runner_parameter(path, name, value)
+        except ValueError as exc:
+            self.status.setText(f'Cannot edit parameter: {exc}')
+            return
+        if not changed:
+            self.status.setText('Parameter is unchanged. The plan has not been validated.')
+            return
+        self._commit_model(path)
+
+    def remove_parameter(self):
+        item = self.structure.currentItem()
+        if self.model is None or item is None:
+            return
+        path = tuple(item.data(0, QtCore.Qt.UserRole))
+        try:
+            self.model.remove_runner_parameter(path, self.parameter_name.text())
+        except ValueError as exc:
+            self.status.setText(f'Cannot remove parameter: {exc}')
+            return
+        self._commit_model(path)
 
     def close_requests(self):
         self.requests.close()
