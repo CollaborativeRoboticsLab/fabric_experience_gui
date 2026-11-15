@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Plan>
+    <Control type="sequential" >
+        <Runner interface="capabilities2_runner/GetCapabilitySpecsRunner" provider="capabilities2_runner/GetCapabilitySpecsRunner"/>
+        <Runner interface="prompt_capabilities/PromptCapabilityRunner" provider="prompt_capabilities/PromptCapabilityRunner" />
+        <Runner interface="nav2_capabilities/RobotPoseRunner" provider="nav2_capabilities/RobotPoseRunner" map="map" odom="odom" robot="base_link"/>
+        <Runner interface="prompt_capabilities/PromptPoseRunner" provider="prompt_capabilities/PromptPoseRunner" />
+        <Runner interface="prompt_capabilities/PromptPlanRunner" provider="prompt_capabilities/PromptPlanRunner" replan="false" task="move to x:1 and y:2 position" />
+        <Runner interface="fabric_capabilities/FabricSetPlanRunner" provider="fabric_capabilities/FabricSetPlanRunner"/>
+    </Control>
+</Plan>

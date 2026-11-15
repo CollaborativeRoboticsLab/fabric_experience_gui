@@ -64,6 +64,26 @@ This is a package and Python module rename: commands and imports using
 `fabric_experience_inspector` need updating. An older install may still advertise
 the previous package or rqt plugin until its generated artifacts are cleaned.
 
+### Fabric Parser Tests
+
+From a sourced colcon workspace containing the pinned dependencies, enable the
+native parser comparison and run it with:
+
+```bash
+colcon build --packages-up-to fabric_parser_xml
+colcon build --packages-up-to fabric_experience_gui --cmake-args -DFABRIC_GUI_PARSER_TESTS=ON
+source install/setup.bash
+colcon test --packages-select fabric_experience_gui --ctest-args -R test_draft_fabric_parser
+colcon test-result --verbose
+```
+
+The opt-in test calls the Fabric XML parser directly and does not submit a plan.
+It compares a checked-in copy of Fabric's default plan before and after a runner
+parameter edit, along with selected structural edits and parameter round trips.
+Unsupported or lossy XML cases are also checked; this is not full runtime
+validation or proof of arbitrary XML support. Without the option, this comparison
+is skipped.
+
 ## GUI Usage
 
 From the colcon workspace root, start the standalone inspector:
@@ -223,12 +243,32 @@ replace its interface and provider in the draft. Existing parameter attributes a
 preserved but may not be valid for the new provider. Runner parameter attributes can
 also be added, changed, or removed using the parameter editor; names must be valid
 unnamespaced XML attributes and cannot be `interface` or `provider`. Values are text
-and are not checked against provider metadata. The list is a snapshot and must
-be refreshed to reflect changes; failure clears it. An unchanged structured draft
-retains its original XML, while editing may normalize its formatting. This is not
-Fabric validation: parameters, parser behavior, and runtime availability remain
-unchecked. Visual graph editing and dispatch are not available. The Plan Sandbox
-remains non-dispatching.
+and are not checked against provider metadata. The GUI currently uses runnable YAML
+only to check interface/provider names; it does not assess whether parameter metadata
+is complete. The service provides no content revision or update timestamp for the GUI
+to determine whether a spec is stale. A missing or insufficient parameter definition
+must therefore remain unknown, not be treated as valid. The list is a snapshot and
+must be refreshed to reflect changes; failure clears it.
+
+Fabric's `ParameterValidation` checks whether required runtime inputs can be satisfied
+by an upstream output, an explicit plan attribute, a configuration fallback, or a
+default. An explicit attribute is matched by name or alias without checking its type
+or value, and unknown extra attributes are not rejected. Separately, the XML parser
+infers scalar types from lexical text: exact `true`/`false` values become booleans,
+integer text becomes integer, fully parsed decimal text becomes double, and other
+values become strings (`1` and `1.0` therefore have different types). Provider type
+metadata does not drive this conversion. The Graph Editor can call
+`/fabric/plan/validate` with the exact current XML draft. The service parses it,
+refreshes capability information with a bounded wait, and runs configured Fabric
+validators. It reports whether validation completed and whether those validators
+passed, without queueing the plan or interacting with bond, capability use,
+connection, or trigger endpoints. This is not general parameter type/value validation:
+Fabric's `ParameterValidation` checks required runtime-input satisfaction, while
+unknown extra attributes are not rejected. An unchanged structured draft retains its
+original XML, while editing may normalize its formatting. `/fabric/plan/submit` queues
+before asynchronous validation and may execute the plan; the GUI must not use
+submission as a dry run. Visual graph editing and dispatch are not available. The Plan
+Sandbox remains non-dispatching.
 
 Loading or replacing a modified draft, or closing the standalone window, offers
 Save, Discard, or Cancel. A canceled or failed save keeps the draft open. When rqt

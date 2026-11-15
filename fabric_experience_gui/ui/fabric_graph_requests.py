@@ -17,12 +17,13 @@ def _wait_for_active_requests():
 
 
 class _GraphRequest(QtCore.QThread):
-    def __init__(self, revision, source, plan_xml, include_dependencies, client_factory):
+    def __init__(self, revision, source, plan_xml, include_dependencies, token, client_factory):
         super().__init__()
         self.revision = revision
         self.source = source
         self.plan_xml = plan_xml
         self.include_dependencies = include_dependencies
+        self.token = token
         self.client_factory = client_factory
         self.result = None
         self.error = ''
@@ -43,6 +44,8 @@ class _GraphRequest(QtCore.QThread):
                 result = client.snapshot(include_dependencies=self.include_dependencies)
             elif self.source == 'runnable':
                 result = client.runnable_specs()
+            elif self.source == 'validate':
+                result = client.validate(self.plan_xml)
             else:
                 result = client.parse(self.plan_xml)
         except Exception as exc:
@@ -60,6 +63,8 @@ class _GraphRequest(QtCore.QThread):
 
 class FabricGraphRequests(QtCore.QObject):
     capture_ready = QtCore.Signal(object)
+    validation_ready = QtCore.Signal(object, object)
+    validation_failed = QtCore.Signal(object, str)
     failed = QtCore.Signal(str)
     busy_changed = QtCore.Signal(bool)
 
@@ -71,13 +76,13 @@ class FabricGraphRequests(QtCore.QObject):
         self._pending = None
         self._closed = False
 
-    def request(self, source: str, plan_xml: str = '', *, include_dependencies: bool = False):
-        if source not in ('live', 'loaded', 'runnable'):
-            raise ValueError('source must be live, loaded, or runnable')
+    def request(self, source: str, plan_xml: str = '', *, include_dependencies: bool = False, token=None):
+        if source not in ('live', 'loaded', 'runnable', 'validate'):
+            raise ValueError('source must be live, loaded, runnable, or validate')
         if self._closed:
             return
         self._revision += 1
-        self._pending = (self._revision, source, plan_xml, include_dependencies)
+        self._pending = (self._revision, source, plan_xml, include_dependencies, token)
         if self._worker is None:
             self._start_pending()
 
@@ -92,9 +97,9 @@ class FabricGraphRequests(QtCore.QObject):
     def _start_pending(self):
         if self._closed or self._pending is None:
             return
-        revision, source, plan_xml, include_dependencies = self._pending
+        revision, source, plan_xml, include_dependencies, token = self._pending
         self._pending = None
-        self._worker = _GraphRequest(revision, source, plan_xml, include_dependencies, self._client_factory)
+        self._worker = _GraphRequest(revision, source, plan_xml, include_dependencies, token, self._client_factory)
         self._worker.finished.connect(self._on_completed)
         _active_requests.add(self._worker)
         self.busy_changed.emit(True)
@@ -103,11 +108,16 @@ class FabricGraphRequests(QtCore.QObject):
     @QtCore.Slot()
     def _on_completed(self):
         worker = self.sender()
-        revision, result, error = worker.revision, worker.result, worker.error
+        revision, source, token, result, error = worker.revision, worker.source, worker.token, worker.result, worker.error
         self._worker = None
         if not self._closed and revision == self._revision:
             if error:
-                self.failed.emit(error)
+                if source == 'validate':
+                    self.validation_failed.emit(token, error)
+                else:
+                    self.failed.emit(error)
+            elif source == 'validate':
+                self.validation_ready.emit(token, result)
             else:
                 self.capture_ready.emit(result)
         if not self._closed and self._pending is not None:

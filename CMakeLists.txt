@@ -38,6 +38,21 @@ install(DIRECTORY launch
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
 
+  option(FABRIC_GUI_PARSER_TESTS "Build tests against the Fabric XML parser" OFF)
+  if(FABRIC_GUI_PARSER_TESTS)
+    find_package(rclcpp REQUIRED)
+    find_package(fabric_base REQUIRED)
+    find_package(fabric_parser_xml REQUIRED)
+    find_package(tinyxml2_vendor REQUIRED)
+    find_package(TinyXML2 REQUIRED)
+    add_executable(fabric_gui_parser_probe test/fabric_parser_probe.cpp)
+    ament_target_dependencies(fabric_gui_parser_probe rclcpp fabric_base fabric_parser_xml TinyXML2)
+    ament_add_pytest_test(test_draft_fabric_parser
+      test/test_plan_sandbox_helpers.py
+      ENV "FABRIC_GUI_PARSER_PROBE=$<TARGET_FILE:fabric_gui_parser_probe>"
+    )
+  endif()
+
   ament_add_pytest_test(test_sqlite_reader
     test/test_sqlite_reader.py
   )

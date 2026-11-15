@@ -12,20 +12,20 @@ from fabric_experience_gui.draft_model import DraftModel
 from fabric_experience_gui.services.fabric_graph_client import parse_runnable_specs
 
 
-def test_runnable_spec_pairs_require_consistent_metadata():
+def test_runnable_spec_pair_discovery_checks_name_consistency_only():
     from types import SimpleNamespace
     import pytest
 
     def response(keys, specs):
         return SimpleNamespace(index_of_specs=keys, runnable_specs=[SimpleNamespace(spec=spec) for spec in specs])
 
-    valid = 'interface:\n  name: demo/Interface\nprovider:\n  name: demo/Provider\n'
-    assert parse_runnable_specs(response(['demo/Provider'], [valid])) == (('demo/Interface', 'demo/Provider'),)
-    for payload in (response([], [valid]), response(['other'], [valid]),
+    names_only = 'interface:\n  name: demo/Interface\nprovider:\n  name: demo/Provider\n'
+    assert parse_runnable_specs(response(['demo/Provider'], [names_only])) == (('demo/Interface', 'demo/Provider'),)
+    for payload in (response([], [names_only]), response(['other'], [names_only]),
                     response(['demo/Provider'], ['interface: [']),
-                    response(['demo/Provider'], [valid + 'provider: {name: demo/Provider}\n']),
+                    response(['demo/Provider'], [names_only + 'provider: {name: demo/Provider}\n']),
                     response([' '], ['interface: {name: demo/Interface}\nprovider: {name: " "}\n']),
-                    response(['demo/Provider', 'demo/Provider'], [valid, valid]),
+                    response(['demo/Provider', 'demo/Provider'], [names_only, names_only]),
                     response(['demo/Provider'], ['provider: {name: demo/Provider}'])):
         with pytest.raises(ValueError):
             parse_runnable_specs(payload)
@@ -91,6 +91,110 @@ def test_draft_model_preserves_attribute_whitespace():
     restored = DraftModel(draft.to_xml())
     assert dict(restored.root.children[0].attributes)['value'] == original
     assert draft.to_xml().startswith('<?xml version="1.1" standalone="yes"?>')
+
+
+def test_draft_round_trip_with_fabric_xml_parser():
+    import subprocess
+    import pytest
+
+    probe = os.environ.get('FABRIC_GUI_PARSER_PROBE')
+    if not probe:
+        pytest.skip('Fabric XML parser probe is not enabled')
+
+    def parse(xml):
+        result = subprocess.run([probe], input=xml, text=True, capture_output=True, timeout=15, check=True)
+        nodes = {}
+        parameters = {}
+        edges = []
+
+        def decode(value):
+            return bytes.fromhex(value).decode('utf-8') if value != '-' else ''
+
+        for line in result.stdout.splitlines():
+            parts = line.split()
+            if parts[:2] == ['PROBE', 'N']:
+                nodes[int(parts[2])] = (decode(parts[3]), decode(parts[4]), int(parts[5]))
+            elif parts[:2] == ['PROBE', 'P']:
+                parameters[(int(parts[2]), decode(parts[3]))] = (int(parts[4]), tuple(map(decode, parts[5:])))
+            elif parts[:2] == ['PROBE', 'E']:
+                edges.append((int(parts[2]), parts[3], decode(parts[4]), decode(parts[5]), int(parts[6])))
+        return nodes, parameters, edges
+
+    real_plan_xml = (Path(__file__).parent / 'fixtures' / 'fabric_server_default.xml').read_text(encoding='utf-8')
+    real_plan = DraftModel(real_plan_xml)
+    real_nodes, real_parameters, real_edges = parse(real_plan_xml)
+    assert len(real_nodes) == 7
+    assert sum(identity[:2] == ('fabric_capabilities/FabricCompletionRunner',
+                                'fabric_capabilities/FabricCompletionRunner')
+               for identity in real_nodes.values()) == 1
+    assert real_edges
+    pose_runner_id = next(node_id for node_id, identity in real_nodes.items()
+                          if identity[:2] == ('nav2_capabilities/RobotPoseRunner',
+                                              'nav2_capabilities/RobotPoseRunner'))
+    map_parameter = real_parameters[(pose_runner_id, 'map')]
+    real_plan.set_runner_parameter((0, 2), 'map', 'world')
+    edited_nodes, edited_parameters, edited_edges = parse(real_plan.to_xml())
+    assert edited_nodes == real_nodes and edited_edges == real_edges
+    expected_parameters = dict(real_parameters)
+    expected_parameters[(pose_runner_id, 'map')] = (map_parameter[0], ('world',))
+    assert edited_parameters == expected_parameters
+
+    xml = ('<Plan><Control type="sequential" name="main">'
+           '<Runner interface="demo/I" provider="demo/P" speed="0.5" whole="1" decimal="1.0" '
+           'enabled="true" label="one &amp; two&#10;three"/>'
+           '<Control type="parallel_any"><Runner interface="demo/I" provider="demo/P" speed="1"/>'
+           '<Control type="parallel_all"><Runner interface="demo/J" provider="demo/Q" enabled="true"/>'
+           '<Runner interface="demo/K" provider="demo/T"/></Control></Control>'
+           '<Control type="recovery"><Runner interface="demo/R" provider="demo/S"/></Control>'
+           '</Control></Plan>')
+    draft = DraftModel(xml)
+    draft.set_runner_parameter((0, 0), 'temporary', 'value')
+    draft.remove_runner_parameter((0, 0), 'temporary')
+    original_nodes, original_parameters, original_edges = parse(xml)
+    assert original_nodes
+    assert parse(draft.to_xml()) == (original_nodes, original_parameters, original_edges)
+    repeated = [(node_id, identity) for node_id, identity in original_nodes.items()
+                if identity[:2] == ('demo/I', 'demo/P')]
+    assert len(repeated) == 2 and repeated[0][1][2] != repeated[1][1][2]
+    first_node = repeated[0][0]
+    assert original_parameters[(first_node, 'speed')] == (1, ('0.500000',))
+    assert original_parameters[(first_node, 'whole')] == (2, ('1',))
+    assert original_parameters[(first_node, 'decimal')] == (1, ('1.000000',))
+    assert original_parameters[(first_node, 'enabled')] == (0, ('true',))
+    assert original_parameters[(first_node, 'label')] == (3, ('one & two\nthree',))
+    assert {'start', 'success', 'failure'} <= {edge[1] for edge in original_edges}
+
+    draft.set_runner_parameter((0, 0), 'speed', '1.25')
+    edited_nodes, edited_parameters, edited_edges = parse(draft.to_xml())
+    assert edited_nodes == original_nodes and edited_edges == original_edges
+    assert edited_parameters.pop((first_node, 'speed')) == (1, ('1.250000',))
+    original_parameters.pop((first_node, 'speed'))
+    assert edited_parameters == original_parameters
+
+    draft.set_runner_pair((0, 0), 'demo/New', 'demo/NewProvider', {('demo/New', 'demo/NewProvider')})
+    renamed_nodes, renamed_parameters, renamed_edges = parse(draft.to_xml())
+    assert renamed_nodes[first_node] == ('demo/New', 'demo/NewProvider', edited_nodes[first_node][2])
+    assert {key: value for key, value in renamed_nodes.items() if key != first_node} == {
+        key: value for key, value in edited_nodes.items() if key != first_node}
+    expected_parameters = dict(edited_parameters)
+    expected_parameters[(first_node, 'speed')] = (1, ('1.250000',))
+    assert renamed_parameters == expected_parameters
+    original_identity = edited_nodes[first_node]
+    renamed_identity = renamed_nodes[first_node]
+    expected_edges = [(source, event, *(renamed_identity if (interface, provider, instance) == original_identity
+                                       else (interface, provider, instance)))
+                      for source, event, interface, provider, instance in edited_edges]
+    assert renamed_edges == expected_edges
+
+    nested_content = ('<Plan><Runner interface="demo/I" provider="demo/P">'
+                      '<Parameters x="ignored"/></Runner></Plan>')
+    nested_nodes, nested_parameters, _ = parse(nested_content)
+    nested_runner = next(node_id for node_id, identity in nested_nodes.items() if identity[0] == 'demo/I')
+    assert (nested_runner, 'x') not in nested_parameters
+    with pytest.raises(ValueError, match='Runner child elements'):
+        DraftModel(nested_content)
+    with pytest.raises(subprocess.CalledProcessError):
+        parse('<Plan><Unknown/></Plan>')
 
 
 def test_draft_runner_parameters_round_trip_and_reject_invalid_edits():

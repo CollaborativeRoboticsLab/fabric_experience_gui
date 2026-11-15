@@ -385,6 +385,9 @@ def test_fabric_graph_requests_switch_failure_and_close():
                 raise TimeoutError('parse timed out')
             return plan_xml
 
+        def validate(self, plan_xml):
+            return plan_xml
+
         def close(self):
             closed.append(True)
 
@@ -411,6 +414,12 @@ def test_fabric_graph_requests_switch_failure_and_close():
     assert len(closed) == 2
 
     requests.request('loaded', 'bad')
+
+    validations = []
+    requests.validation_ready.connect(lambda token, result: validations.append((token, result)))
+    requests.request('validate', '<Plan />', token=7)
+    wait_for(lambda: validations == [(7, '<Plan />')] and busy[-1:] == [False])
+    assert len(closed) == 5
     wait_for(lambda: failures == ['parse timed out'] and busy[-1:] == [False])
     assert len(closed) == 3
 
@@ -651,7 +660,7 @@ def test_fabric_graph_widget_real_services_recover_without_mutation(monkeypatch)
     from capabilities2_msgs.msg import RunnableSpec
     from capabilities2_msgs.srv import ConnectCapability, GetRunnableSpecs, TriggerCapability
     from fabric_msgs.msg import FabricConnection, FabricNode, FabricStatus
-    from fabric_msgs.srv import CancelFabricPlan, GetFabricPlanSnapshot, ParsePlan, SubmitFabricPlan
+    from fabric_msgs.srv import CancelFabricPlan, GetFabricPlanSnapshot, ParsePlan, SubmitFabricPlan, ValidatePlan
     from fabric_experience_gui.services.fabric_graph_client import FabricGraphClient
     from fabric_experience_gui.ui.draft_editor import DraftEditorWidget
 
@@ -690,6 +699,13 @@ def test_fabric_graph_widget_real_services_recover_without_mutation(monkeypatch)
         response.connections = [edge]
         return response
 
+    def validate_callback(request, response):
+        requests.append(('validate', request.plan))
+        response.completed = True
+        response.valid = True
+        response.message = 'All configured validators passed.'
+        return response
+
     def mutation_callback(request, response):
         mutations.append(True)
         return response
@@ -710,6 +726,7 @@ def test_fabric_graph_widget_real_services_recover_without_mutation(monkeypatch)
     try:
         snapshot_service = node.create_service(GetFabricPlanSnapshot, '/fabric/plan/get_snapshot', snapshot_callback)
         node.create_service(ParsePlan, '/fabric/plan/parse', parse_callback)
+        node.create_service(ValidatePlan, '/fabric/plan/validate', validate_callback)
         node.create_service(SubmitFabricPlan, '/fabric/plan/submit', mutation_callback)
         node.create_service(CancelFabricPlan, '/fabric/plan/cancel', mutation_callback)
         node.create_service(ConnectCapability, '/capabilities/connect_capability', mutation_callback)
@@ -746,6 +763,11 @@ def test_fabric_graph_widget_real_services_recover_without_mutation(monkeypatch)
         draft.editor.setPlainText(original)
         draft.inspect_structure()
         draft.structure.setCurrentItem(draft.structure.topLevelItem(0).child(0))
+
+        exact_xml = draft.editor.toPlainText()
+        draft.validate_draft()
+        wait_for(lambda: 'validators passed' in draft.status.text())
+        assert requests[-1] == ('validate', exact_xml)
         assert not draft.apply_runnable_button.isEnabled()
         draft.refresh_runnables()
         wait_for(lambda: bool(draft.runnable_pairs) and draft.refresh_runnable_button.isEnabled())
@@ -768,7 +790,9 @@ def test_fabric_graph_widget_real_services_recover_without_mutation(monkeypatch)
         runnable_service = node.create_service(GetRunnableSpecs, '/capabilities/get_runnable_specs', runnable_callback)
         draft.refresh_runnables()
         wait_for(lambda: bool(draft.runnable_pairs) and draft.refresh_runnable_button.isEnabled())
-        assert requests == ['snapshot', 'snapshot', ('parse', '<Plan />'), 'runnable', 'runnable']
+        assert requests == [
+            'snapshot', 'snapshot', ('parse', '<Plan />'), 'runnable', 'runnable', ('validate', exact_xml),
+        ]
         assert not mutations
     finally:
         widget.close_requests()

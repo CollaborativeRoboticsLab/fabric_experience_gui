@@ -12,9 +12,13 @@ class DraftEditorWidget(QtWidgets.QWidget):
         super().__init__(parent)
         self.model = None
         self._selected_parameter_original = None
+        self._draft_revision = 0
+        self._validation_in_progress = False
         self.runnable_pairs = ()
         self.requests = FabricGraphRequests(self)
         self.requests.capture_ready.connect(self._runnable_ready)
+        self.requests.validation_ready.connect(self._validation_ready)
+        self.requests.validation_failed.connect(self._validation_failed)
         self.requests.failed.connect(self._runnable_failed)
         self.requests.busy_changed.connect(self._runnable_busy_changed)
         layout = QtWidgets.QVBoxLayout(self)
@@ -24,6 +28,7 @@ class DraftEditorWidget(QtWidgets.QWidget):
             ('Load XML', 'Load XML into the isolated draft.', self.load_draft),
             ('Save XML', 'Save the current draft to an XML file.', self.save_draft),
             ('Check XML', 'Check XML well-formedness and the Plan root; this does not validate or dispatch the plan.', self.check_xml),
+            ('Validate Draft', 'Run configured Fabric validators on the exact XML without queueing or executing it.', self.validate_draft),
             ('Inspect Structure', 'Inspect the supported draft structure without validating or dispatching it.', self.inspect_structure),
         ):
             button = QtWidgets.QPushButton(label)
@@ -104,6 +109,8 @@ class DraftEditorWidget(QtWidgets.QWidget):
         self._selection_changed()
 
     def _draft_changed(self):
+        self._draft_revision += 1
+        self._validation_in_progress = False
         self.model = None
         self.structure.clear()
         self._update_apply_state()
@@ -190,6 +197,28 @@ class DraftEditorWidget(QtWidgets.QWidget):
             self.status.setText('XML must have a Plan root element. The plan has not been validated.')
             return
         self.status.setText('XML is well-formed with a Plan root. Fabric syntax and capabilities have not been validated.')
+
+    def validate_draft(self):
+        self._validation_in_progress = True
+        self.status.setText('Validating this exact draft with Fabric. This does not queue or execute the plan.')
+        self.requests.request('validate', self.editor.toPlainText(), token=self._draft_revision)
+
+    def _validation_ready(self, revision, result):
+        if revision != self._draft_revision:
+            return
+        self._validation_in_progress = False
+        if not result.completed:
+            self.status.setText(f'Fabric validation unavailable or incomplete: {result.message}')
+        elif result.valid:
+            self.status.setText(f'Configured Fabric validators passed: {result.message}')
+        else:
+            self.status.setText(f'Fabric validation failed: {result.message}')
+
+    def _validation_failed(self, revision, error):
+        if revision != self._draft_revision:
+            return
+        self._validation_in_progress = False
+        self.status.setText(f'Fabric validation request failed: {error}')
 
     def inspect_structure(self):
         self.model = None

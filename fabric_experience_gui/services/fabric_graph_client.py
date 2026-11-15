@@ -61,7 +61,7 @@ class FabricGraphClient:
             from rclpy.context import Context
             from rclpy.executors import SingleThreadedExecutor
             from rclpy.node import Node
-            from fabric_msgs.srv import GetFabricPlanSnapshot, ParsePlan
+            from fabric_msgs.srv import GetFabricPlanSnapshot, ParsePlan, ValidatePlan
             from capabilities2_msgs.srv import GetRunningCapabilities, GetRunnableSpecs
         except ImportError as exc:
             raise RuntimeError('Fabric graph unavailable: missing ROS dependencies') from exc
@@ -76,10 +76,12 @@ class FabricGraphClient:
             self._executor.add_node(self._node)
             self._snapshot_type = GetFabricPlanSnapshot
             self._parse_type = ParsePlan
+            self._validate_type = ValidatePlan
             self._running_type = GetRunningCapabilities
             self._runnable_type = GetRunnableSpecs
             self._snapshot = self._node.create_client(GetFabricPlanSnapshot, '/fabric/plan/get_snapshot')
             self._parse = self._node.create_client(ParsePlan, '/fabric/plan/parse')
+            self._validate = self._node.create_client(ValidatePlan, '/fabric/plan/validate')
             self._running = self._node.create_client(GetRunningCapabilities, '/capabilities/get_running_capabilities')
             self._runnable = self._node.create_client(GetRunnableSpecs, '/capabilities/get_runnable_specs')
         except Exception:
@@ -90,12 +92,13 @@ class FabricGraphClient:
             rclpy.shutdown(context=self._context)
             raise
 
-    def _request(self, client, request, name):
-        if not client.wait_for_service(timeout_sec=self._timeout_sec):
+    def _request(self, client, request, name, timeout_sec=None):
+        timeout_sec = self._timeout_sec if timeout_sec is None else timeout_sec
+        if not client.wait_for_service(timeout_sec=timeout_sec):
             raise RuntimeError(f'service {name} not available')
         future = client.call_async(request)
         try:
-            self._executor.spin_until_future_complete(future, timeout_sec=self._timeout_sec)
+            self._executor.spin_until_future_complete(future, timeout_sec=timeout_sec)
         except Exception:
             client.remove_pending_request(future)
             future.cancel()
@@ -127,6 +130,13 @@ class FabricGraphClient:
         request.plan = plan_xml
         response = self._request(self._parse, request, '/fabric/plan/parse')
         return capture_parsed_plan(response)
+
+    def validate(self, plan_xml: str):
+        request = self._validate_type.Request()
+        request.plan = plan_xml
+        return self._request(
+            self._validate, request, '/fabric/plan/validate', timeout_sec=max(10.0, self._timeout_sec)
+        )
 
     def runnable_specs(self):
         response = self._request(self._runnable, self._runnable_type.Request(), '/capabilities/get_runnable_specs')

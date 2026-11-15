@@ -2,6 +2,11 @@
 
 See `planned_work.md` for scope, dependencies, and acceptance criteria.
 
+Major functional implementation is incomplete. Read-only inspection and basic
+isolated draft editing exist; visual graph editing, safe generation, complete
+validation, and explicit submission do not. Start with the GPT Luna handoff in
+`planned_work.md`; the unchecked items below remain open, not completed work.
+
 ## GUI Reorganization And Separation
 
 - [ ] Verify the devcontainer bootstrap and clean build in a real container.
@@ -28,10 +33,10 @@ See `planned_work.md` for scope, dependencies, and acceptance criteria.
 ## 3. Graph Editor
 
 - [ ] Verify unsaved-draft handling during removal from a full rqt host.
-- [ ] Compare original and edited drafts with the actual Fabric XML parser, covering nested controls, repeated runners, event connections, and parameter attributes; identify unsupported or lossy structures.
-- [ ] Check runnable-spec metadata against Fabric's parameter handling, then validate known parameter names, values, and requirements while reporting unavailable or insufficient metadata honestly.
+- [ ] Expand parser-backed comparisons beyond the nested-control fixture and checked-in Fabric default plan; identify unsupported or lossy structures and additional real-world plan cases.
+- [ ] Implement parameter validation only after defining how to handle incomplete or stale runnable metadata. Current pair discovery checks names only; the service has no content freshness marker, Fabric's validator checks required runtime-input satisfaction rather than general value/type validity, and unknown extra attributes are not rejected.
 - [ ] Add node and event-edge editing; retain parameter editing, discovered runnable-pair selection, and draft load/save.
-- [ ] Establish a non-dispatching validation path for the exact draft; invalidate results after edits and keep submission disabled until validation and review are verified.
+- [x] Add `/fabric/plan/validate` for the exact draft and invoke it from the Graph Editor; validation is non-dispatching, and edits invalidate prior results. The service runs configured validators, not general parameter type/value checks. Keep submission disabled and do not use `/submit` as a dry run.
 - [ ] Test graph-to-plan conversion, invalid drafts, unsupported XML, and round trips.
 
 ## 4. Explicit Dispatch
