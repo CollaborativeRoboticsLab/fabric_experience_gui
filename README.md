@@ -24,6 +24,16 @@ The package now uses Qt through `python_qt_binding`, which matches the ROS GUI e
 - A non-destructive tuning proposal exporter for community or threshold review follow-up
 - An `rqt` plugin wrapper around the same inspector widget
 
+## Code Layout
+
+`fabric_experience_gui/ui/fabric` contains the Generative Graph, Live Graph,
+and Graph Editor widgets and their shared request coordinator.
+`fabric_experience_gui/ui/experience` groups the Experience widgets by feature
+and holds shared table models. Graph Overview's data preparation is separated
+from its Qt widget. The application shell in `app.py` assembles the tabs and
+coordinates shared state; ROS clients and artifact storage remain in `services`
+and `storage`.
+
 ## Build
 
 The GUI is an independent repository. To use its ROS Jazzy devcontainer, clone it

@@ -1,4 +1,5 @@
 import os
+import importlib
 import select
 import signal
 import sqlite3
@@ -20,9 +21,27 @@ from fabric_experience_gui.app import InspectorMainWindow, InspectorWidget, ensu
 from fabric_experience_gui.audits.planner_prompt_audit_summary import export_planner_prompt_audit_summary
 from fabric_experience_gui.audits.retrieval_prompt_audit import export_retrieval_prompt_audit
 from fabric_experience_gui.fabric_graph import Dependency, Event, FabricGraph, GraphCapture, InstanceId, ProviderId
-from fabric_experience_gui.ui.fabric_graph_requests import FabricGraphRequests, _active_requests
-from fabric_experience_gui.ui.fabric_graph_view import FabricGraphWidget
+from fabric_experience_gui.ui.fabric.requests import FabricGraphRequests, _active_requests
+from fabric_experience_gui.ui.fabric.live_graph import FabricGraphWidget
 from test_sqlite_reader import create_minimal_db
+
+
+def test_ui_feature_imports():
+    modules = [
+        ('experience.analysis_jobs', 'AnalysisJobsPanel'),
+        ('experience.decision_support', 'CalibrationReviewWidget'),
+        ('experience.decision_support', 'DecisionSupportWidget'),
+        ('experience.decision_support', 'RequestReviewWidget'),
+        ('experience.graph_overview', 'GraphOverviewWidget'),
+        ('experience.graph_overview', 'build_graph_overview_state'),
+        ('experience.plan_sandbox', 'PlanSandboxWidget'),
+        ('fabric.graph_editor', 'DraftEditorWidget'),
+        ('fabric.live_graph', 'FabricGraphWidget'),
+        ('fabric.requests', 'FabricGraphRequests'),
+    ]
+    for feature_path, name in modules:
+        feature_module = importlib.import_module(f'fabric_experience_gui.ui.{feature_path}')
+        assert callable(getattr(feature_module, name))
 
 
 def test_navigation_and_experience_controls():
@@ -414,14 +433,14 @@ def test_fabric_graph_requests_switch_failure_and_close():
     assert len(closed) == 2
 
     requests.request('loaded', 'bad')
+    wait_for(lambda: failures == ['parse timed out'] and busy[-1:] == [False])
+    assert len(closed) == 3
 
     validations = []
     requests.validation_ready.connect(lambda token, result: validations.append((token, result)))
     requests.request('validate', '<Plan />', token=7)
     wait_for(lambda: validations == [(7, '<Plan />')] and busy[-1:] == [False])
-    assert len(closed) == 5
-    wait_for(lambda: failures == ['parse timed out'] and busy[-1:] == [False])
-    assert len(closed) == 3
+    assert len(closed) == 4
 
     started.clear()
     release.clear()
@@ -429,7 +448,7 @@ def test_fabric_graph_requests_switch_failure_and_close():
     assert started.wait(5)
     requests.close()
     release.set()
-    wait_for(lambda: len(closed) == 4 and busy[-1:] == [False])
+    wait_for(lambda: len(closed) == 5 and busy[-1:] == [False])
     assert captures == ['current']
     assert failures == ['parse timed out']
 
@@ -632,7 +651,7 @@ def test_fabric_graph_requests_finish_on_process_exit():
     script = '''
 import threading
 from fabric_experience_gui.app import ensure_application
-from fabric_experience_gui.ui.fabric_graph_requests import FabricGraphRequests
+from fabric_experience_gui.ui.fabric.requests import FabricGraphRequests
 started = threading.Event()
 class Client:
     def snapshot(self, include_dependencies=False):
@@ -662,7 +681,7 @@ def test_fabric_graph_widget_real_services_recover_without_mutation(monkeypatch)
     from fabric_msgs.msg import FabricConnection, FabricNode, FabricStatus
     from fabric_msgs.srv import CancelFabricPlan, GetFabricPlanSnapshot, ParsePlan, SubmitFabricPlan, ValidatePlan
     from fabric_experience_gui.services.fabric_graph_client import FabricGraphClient
-    from fabric_experience_gui.ui.draft_editor import DraftEditorWidget
+    from fabric_experience_gui.ui.fabric.graph_editor import DraftEditorWidget
 
     monkeypatch.setenv('ROS_DOMAIN_ID', str(100 + os.getpid() % 100))
     monkeypatch.setenv('ROS_LOCALHOST_ONLY', '1')

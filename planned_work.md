@@ -4,10 +4,12 @@
 
 **Functional status: incomplete.** The read-only Fabric graph and an isolated
 XML draft editor are implemented, including runner pair and parameter editing.
-A validate-only Fabric service and GUI invocation for the exact draft are also
-implemented. Visual node/edge editing, safe generation, and explicit submission
-are not implemented. Existing runtime and integration coverage also has gaps;
-a successful build or parser test does not close them.
+The GUI invokes the synchronous, non-dispatching `/fabric/plan/validate`
+service with the exact draft. The Fabric server build and focused runtime test
+pass, but a live GUI-to-server validation smoke test remains to be run. Visual
+node/edge editing, safe generation, and explicit submission are not implemented.
+Existing runtime and integration coverage also has gaps; a successful build or
+parser test does not close them.
 
 Continue in this order, keeping changes scoped and tracking any newly discovered
 contract limitations:
@@ -19,14 +21,9 @@ contract limitations:
 2. Inspect runnable-spec metadata and Fabric parameter conversion before adding
 	parameter validation. Report missing, stale, or insufficient metadata rather
 	than treating it as valid, and preserve draft attributes on provider changes.
-3. `/fabric/plan/validate` parses the supplied XML and invokes configured
-	validators without queueing the plan or interacting with bond, use, connect,
-	or trigger endpoints. The Graph Editor sends the exact draft text and ignores
-	results after edits. This is not general parameter type/value validation:
-	`ParameterValidation` checks required runtime-input satisfaction, and unknown
-	extra attributes are not rejected. Keep submission disabled until explicit
-	dispatch safeguards are implemented; never use submission as a validation
-	shortcut.
+3. Run the live GUI-to-server validation smoke test in `docs/testing.md`, then
+	add focused integration coverage for service discovery, valid and invalid
+	results, edits after validation, and absence of dispatch side effects.
 4. Implement visual node/edge editing only for structures the parser can safely
 	represent. Then implement explicit submission with review, confirmation, and
 	no automatic retry after an ambiguous timeout.
@@ -41,7 +38,9 @@ until its side effects are understood. Do not modify the separate Fabric
 repository as part of GUI work without agreement.
 
 The latest recorded GUI suite passed 59 tests with the opt-in native parser
-probe; its comparisons are representative, not exhaustive. The GUI worktree
+probe; its comparisons are representative, not exhaustive. The focused
+`fabric_server` build and `test_fabric_runtime` also pass. The live validation
+smoke test is documented in `docs/testing.md` but remains unverified. The GUI worktree
 contains uncommitted parser-test and documentation changes plus existing
 untracked `build/`, `install/`, and `log/` directories. Preserve those changes
 and artifacts. A clean-container build and cross-container discovery remain
@@ -56,7 +55,7 @@ unverified; see `ToDo` for the open checklist.
 - Verify tab structure, control visibility, tooltips, graph labels, existing workflows, standalone/rqt behavior, and no accidental dispatch. Track incomplete integrations explicitly.
 
 ## Implementation Progress
-- `/fabric/plan/validate` accepts the exact XML draft and returns whether validation completed, whether configured validators passed, and a message. It does not enqueue a plan or call execution/mutation endpoints. The editor invalidates validation results after edits. The controlled GUI test covers exact payload delivery and no mutation calls; broad parameter type/value validation remains out of scope.
+- `/fabric/plan/validate` accepts the exact XML draft through a synchronous request/response callback and returns whether validation completed, whether configured validators passed, and a message. It does not enqueue a plan or call execution/mutation endpoints. The editor invalidates validation results after edits. The controlled GUI test covers exact payload delivery and no mutation calls; the server build and focused runtime test pass. The live GUI-to-server test remains open, and broad parameter type/value validation remains out of scope.
 
 - The package, Python module, launch file and rqt wrapper were renamed to `fabric_experience_gui` and built in an earlier workspace. The standalone window opened on a virtual display, and the renamed rqt plugin was discovered and started; interrupted rqt shutdown emitted X11 and class-loader warnings. Old install artifacts are not removed automatically. Live-service and full rqt interaction checks after the rename remain open.
 - Fabric and Experience tabs now contain the requested grouped views, and Analysis Jobs is an optional Experience panel. Live graph nodes show full interface names with identity tooltips. Generative Graph has a prompt field and read-only review area, but generation remains disabled. Graph Editor contains an isolated XML draft workspace; visual editing and submission are unavailable.
@@ -88,7 +87,7 @@ Database mutation is not part of this work. Existing proposal exports remain non
 - The Plan Sandbox loads XML and displays plan/control/runner structure; it is not an authoritative live capability graph.
 - `/fabric/plan/parse` returns parsed Fabric connections for supplied XML. `/fabric/plan/get_status` returns lifecycle status; `/fabric/plan/get_snapshot` returns the cached intended graph for the current dequeued plan.
 - capabilities2 exposes running capabilities and dependency information. Its current running-capability response does not populate instance IDs, so it cannot reliably assign dependencies to specific plan instances. The `dependent_capabilities` field is populated from the running model's dependencies; preserve the actual direction and verify it in tests.
-- `/fabric/plan/validate` parses supplied XML, refreshes capability information with a bounded wait, and invokes configured validators synchronously. It reports `completed`, `valid`, and a message; it does not queue a plan or interact with bond, capability use, connection, or trigger endpoints. `/fabric/plan/parse` remains parser-only. `/fabric/plan/submit` queues before asynchronous validation and may proceed to execution; it is not a validation shortcut.
+- `/fabric/plan/validate` parses supplied XML, refreshes capability information with a bounded wait, and invokes configured validators synchronously. The Graph Editor's live smoke-test procedure is in `docs/testing.md`. The service reports `completed`, `valid`, and a message; it does not queue a plan or interact with bond, capability use, connection, or trigger endpoints. `/fabric/plan/parse` remains parser-only. `/fabric/plan/submit` queues before asynchronous validation and may proceed to execution; it is not a validation shortcut.
 
 ## Phase 1: Remaining Runtime Work
 

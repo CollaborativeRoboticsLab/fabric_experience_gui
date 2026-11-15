@@ -19,8 +19,10 @@ from fabric_experience_gui.storage import InspectorDatabase, TableSnapshot, form
 from fabric_experience_gui.graph_plot_3d import save_graph_plot
 from fabric_experience_gui.plan_sandbox import build_plan_sandbox_graph, build_tuning_proposal, parse_optional_json
 from fabric_experience_gui.services import score_plan_live
-from fabric_experience_gui.ui.fabric_graph_view import FabricGraphWidget
-from fabric_experience_gui.ui.draft_editor import DraftEditorWidget
+from fabric_experience_gui.ui.experience.table_models import SnapshotFilterProxyModel, SnapshotTableModel
+from fabric_experience_gui.ui.fabric.graph_editor import DraftEditorWidget
+from fabric_experience_gui.ui.fabric.generative_graph import GenerativeGraphWidget
+from fabric_experience_gui.ui.fabric.live_graph import FabricGraphWidget
 from fabric_experience_gui.ui import (
     AnalysisJobsPanel as DockAnalysisJobsPanel,
     CalibrationReviewWidget,
@@ -67,127 +69,6 @@ PLAN_NODE_BRUSHES = {
     'control': '#f2994a',
     'runner': '#27ae60',
 }
-
-
-class SnapshotTableModel(QtCore.QAbstractTableModel):
-    def __init__(self):
-        super().__init__()
-        self.snapshot = TableSnapshot(name='', columns=[], rows=[])
-
-    def set_snapshot(self, snapshot: TableSnapshot) -> None:
-        self.beginResetModel()
-        self.snapshot = snapshot
-        self.endResetModel()
-
-    def rowCount(self, parent: QtCore.QModelIndex = QtCore.QModelIndex()) -> int:
-        del parent
-        return len(self.snapshot.rows)
-
-    def columnCount(self, parent: QtCore.QModelIndex = QtCore.QModelIndex()) -> int:
-        del parent
-        return len(self.snapshot.columns)
-
-    def data(self, index: QtCore.QModelIndex, role: int = QtCore.Qt.DisplayRole) -> Any:
-        if not index.isValid():
-            return None
-        row = self.snapshot.rows[index.row()]
-        column_name = self.snapshot.columns[index.column()]
-        value = row.get(column_name, '')
-        if role == QtCore.Qt.DisplayRole:
-            return self._compact_value(value)
-        if role == QtCore.Qt.ToolTipRole:
-            return format_cell(value)
-        if role == QtCore.Qt.UserRole:
-            return index.row()
-        if role == QtCore.Qt.UserRole + 1:
-            return self._sortable_value(value)
-        return None
-
-    def headerData(self, section: int, orientation: QtCore.Qt.Orientation, role: int = QtCore.Qt.DisplayRole) -> Any:
-        if role != QtCore.Qt.DisplayRole:
-            return None
-        if orientation == QtCore.Qt.Horizontal:
-            if 0 <= section < len(self.snapshot.columns):
-                return self.snapshot.columns[section]
-            return None
-        return section + 1
-
-    def row_dict(self, row_index: int) -> Dict[str, Any]:
-        if 0 <= row_index < len(self.snapshot.rows):
-            return self.snapshot.rows[row_index]
-        return {}
-
-    @staticmethod
-    def _compact_value(value: Any) -> str:
-        text = format_cell(value)
-        return text if len(text) <= 80 else text[:77] + '...'
-
-    @staticmethod
-    def _sortable_value(value: Any) -> Any:
-        if isinstance(value, (int, float)):
-            return value
-        if isinstance(value, list):
-            return json.dumps(value, sort_keys=True)
-        if isinstance(value, dict):
-            return json.dumps(value, sort_keys=True)
-        if value is None:
-            return ''
-        text = str(value)
-        try:
-            return float(text)
-        except ValueError:
-            return text.lower()
-
-
-class SnapshotFilterProxyModel(QtCore.QSortFilterProxyModel):
-    def __init__(self):
-        super().__init__()
-        self.primary_column = 'All columns'
-        self.primary_text = ''
-        self.secondary_column = 'All columns'
-        self.secondary_text = ''
-        self.setDynamicSortFilter(True)
-
-    def set_primary_filter(self, column_name: str, text: str) -> None:
-        self.primary_column = column_name
-        self.primary_text = text.strip().lower()
-        self.invalidateFilter()
-
-    def set_secondary_filter(self, column_name: str, text: str) -> None:
-        self.secondary_column = column_name
-        self.secondary_text = text.strip().lower()
-        self.invalidateFilter()
-
-    def filterAcceptsRow(self, source_row: int, source_parent: QtCore.QModelIndex) -> bool:
-        del source_parent
-        model = self.sourceModel()
-        if not isinstance(model, SnapshotTableModel):
-            return True
-        row = model.row_dict(source_row)
-        columns = model.snapshot.columns
-        return self._row_matches(row, columns, self.primary_column, self.primary_text) and self._row_matches(
-            row,
-            columns,
-            self.secondary_column,
-            self.secondary_text,
-        )
-
-    def lessThan(self, left: QtCore.QModelIndex, right: QtCore.QModelIndex) -> bool:
-        left_value = left.data(QtCore.Qt.UserRole + 1)
-        right_value = right.data(QtCore.Qt.UserRole + 1)
-        try:
-            return left_value < right_value
-        except TypeError:
-            return str(left_value) < str(right_value)
-
-    @staticmethod
-    def _row_matches(row: Dict[str, Any], columns: List[str], column_name: str, needle: str) -> bool:
-        if not needle:
-            return True
-        if column_name == 'All columns':
-            values = [SnapshotTableModel._compact_value(row.get(name, '')).lower() for name in columns]
-            return any(needle in value for value in values)
-        return needle in SnapshotTableModel._compact_value(row.get(column_name, '')).lower()
 
 
 class InspectorWidget(QtWidgets.QWidget):
@@ -289,27 +170,10 @@ class InspectorWidget(QtWidgets.QWidget):
         outer_layout.addWidget(notebook, stretch=1)
 
     def _build_generative_graph(self) -> QtWidgets.QWidget:
-        page = QtWidgets.QWidget()
-        layout = QtWidgets.QVBoxLayout(page)
-        layout.addWidget(QtWidgets.QLabel('Task prompt'))
-        self.generation_prompt = QtWidgets.QPlainTextEdit()
-        self.generation_prompt.setPlaceholderText('Describe the task for the generated plan.')
-        self.generation_prompt.setToolTip('Task description to use when plan generation becomes available.')
-        self.generation_prompt.setMaximumHeight(160)
-        layout.addWidget(self.generation_prompt)
-        self.generate_button = QtWidgets.QPushButton('Generate plan')
-        self.generate_button.setEnabled(False)
-        self.generate_button.setToolTip('Unavailable until non-dispatching generation is verified.')
-        layout.addWidget(self.generate_button, alignment=QtCore.Qt.AlignLeft)
-        status = QtWidgets.QLabel('Plan generation and dispatch are unavailable pending safe preview and validation.')
-        status.setWordWrap(True)
-        layout.addWidget(status)
-        layout.addWidget(QtWidgets.QLabel('Generated plan'))
-        self.generated_plan_preview = QtWidgets.QPlainTextEdit()
-        self.generated_plan_preview.setReadOnly(True)
-        self.generated_plan_preview.setPlaceholderText('No generated plan available.')
-        self.generated_plan_preview.setToolTip('Generated plan XML will appear here when safe preview is available.')
-        layout.addWidget(self.generated_plan_preview, stretch=1)
+        page = GenerativeGraphWidget()
+        self.generation_prompt = page.generation_prompt
+        self.generate_button = page.generate_button
+        self.generated_plan_preview = page.generated_plan_preview
         return page
 
     def closeEvent(self, event):
