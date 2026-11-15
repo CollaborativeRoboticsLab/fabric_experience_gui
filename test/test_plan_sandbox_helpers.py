@@ -20,13 +20,19 @@ def test_runnable_spec_pair_discovery_checks_name_consistency_only():
         return SimpleNamespace(index_of_specs=keys, runnable_specs=[SimpleNamespace(spec=spec) for spec in specs])
 
     names_only = 'interface:\n  name: demo/Interface\nprovider:\n  name: demo/Provider\n'
-    assert parse_runnable_specs(response(['demo/Provider'], [names_only])) == (('demo/Interface', 'demo/Provider'),)
+    other_interface = 'interface: {name: demo/Other}\nprovider: {name: demo/Provider}\n'
+    key = 'demo/Interface|demo/Provider'
+    assert parse_runnable_specs(response([key], [names_only])) == (('demo/Interface', 'demo/Provider'),)
+    assert parse_runnable_specs(response([key, 'demo/Other|demo/Provider'], [names_only, other_interface])) == (
+        ('demo/Interface', 'demo/Provider'), ('demo/Other', 'demo/Provider'))
     for payload in (response([], [names_only]), response(['other'], [names_only]),
-                    response(['demo/Provider'], ['interface: [']),
-                    response(['demo/Provider'], [names_only + 'provider: {name: demo/Provider}\n']),
+                    response(['demo/Provider'], [names_only]),
+                    response(['demo/Other|demo/Provider'], [names_only]),
+                    response([key], ['interface: [']),
+                    response([key], [names_only + 'provider: {name: demo/Provider}\n']),
                     response([' '], ['interface: {name: demo/Interface}\nprovider: {name: " "}\n']),
-                    response(['demo/Provider', 'demo/Provider'], [names_only, names_only]),
-                    response(['demo/Provider'], ['provider: {name: demo/Provider}'])):
+                    response([key, key], [names_only, names_only]),
+                    response([key], ['provider: {name: demo/Provider}'])):
         with pytest.raises(ValueError):
             parse_runnable_specs(payload)
 

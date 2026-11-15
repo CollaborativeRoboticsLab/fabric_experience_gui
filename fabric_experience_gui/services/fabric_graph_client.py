@@ -27,7 +27,6 @@ def parse_runnable_specs(response):
     if len(response.index_of_specs) != len(response.runnable_specs):
         raise ValueError('Runnable specification provider and spec counts do not match.')
     pairs = set()
-    providers = set()
     for key, spec in zip(response.index_of_specs, response.runnable_specs):
         try:
             data = yaml.load(spec.spec, Loader=_UniqueSafeLoader)
@@ -43,12 +42,14 @@ def parse_runnable_specs(response):
         provider_name = provider.get('name')
         if (not isinstance(key, str) or not key.strip() or key != key.strip() or
             not isinstance(interface_name, str) or not interface_name.strip() or
-            interface_name != interface_name.strip() or not isinstance(provider_name, str) or provider_name != key):
+            interface_name != interface_name.strip() or not isinstance(provider_name, str) or
+            not provider_name.strip() or provider_name != provider_name.strip() or
+            key != f'{interface_name}|{provider_name}'):
             raise ValueError(f'Runnable specification for {key} has invalid or inconsistent names.')
-        if provider_name in providers:
-            raise ValueError(f'Duplicate runnable provider: {provider_name}.')
-        providers.add(provider_name)
-        pairs.add((interface_name, provider_name))
+        pair = (interface_name, provider_name)
+        if pair in pairs:
+            raise ValueError(f'Duplicate runnable pair: {key}.')
+        pairs.add(pair)
     return tuple(sorted(pairs))
 
 

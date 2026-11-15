@@ -712,7 +712,7 @@ def test_fabric_graph_widget_real_services_recover_without_mutation(monkeypatch)
 
     def runnable_callback(request, response):
         requests.append('runnable')
-        response.index_of_specs = ['demo/Provider']
+        response.index_of_specs = ['demo/Interface|demo/Provider']
         response.runnable_specs = [RunnableSpec(spec='interface:\n  name: demo/Interface\nprovider:\n  name: demo/Provider\n')]
         return response
 
@@ -791,7 +791,7 @@ def test_fabric_graph_widget_real_services_recover_without_mutation(monkeypatch)
         draft.refresh_runnables()
         wait_for(lambda: bool(draft.runnable_pairs) and draft.refresh_runnable_button.isEnabled())
         assert requests == [
-            'snapshot', 'snapshot', ('parse', '<Plan />'), 'runnable', 'runnable', ('validate', exact_xml),
+            'snapshot', 'snapshot', ('parse', '<Plan />'), ('validate', exact_xml), 'runnable', 'runnable',
         ]
         assert not mutations
     finally:
